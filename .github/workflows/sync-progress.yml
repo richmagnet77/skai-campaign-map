@@ -6,7 +6,7 @@ on:
   schedule:
     - cron: '0 0 * * *'   # KST 09:00
     - cron: '0 6 * * *'   # KST 15:00
-  workflow_dispatch:       # 수동 실행 버튼 (GitHub Actions 페이지에서)
+  workflow_dispatch:       # 수동 실행 버튼
 
 jobs:
   sync:
@@ -29,15 +29,28 @@ jobs:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
         run: node sync-progress.mjs
 
-      - name: Commit & push if changed
+      - name: Commit if changed
+        id: commit
         run: |
           if git diff --quiet index.html; then
-            echo "No changes — skipping commit"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No changes — skipping deploy"
           else
             git config user.name "SKAI Automation"
             git config user.email "automation@skai.ai"
             git add index.html
             git commit -m "Update progress tracker - $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M KST')"
             git push
-            echo "Pushed updated progress"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Deploy to Vercel
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+        run: |
+          npm install -g vercel@latest
+          vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+          vercel deploy --prod --yes --token=$VERCEL_TOKEN
